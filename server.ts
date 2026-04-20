@@ -8,6 +8,7 @@ import { rateLimit } from "express-rate-limit";
 import { GoogleGenAI, Type as GeminiType } from "@google/genai";
 import * as dotenv from 'dotenv';
 import helmet from "helmet";
+import cors from "cors";
 import { body, validationResult } from "express-validator";
 
 dotenv.config();
@@ -17,7 +18,6 @@ const __dirname = path.dirname(__filename);
 
 /**
  * Sanitizes a string by stripping HTML tags and script-injection patterns.
- * Prevents XSS via canvas text elements or AI prompts.
  */
 const sanitizeText = (text: string): string => {
   return text
@@ -25,15 +25,38 @@ const sanitizeText = (text: string): string => {
     .replace(/<[^>]+>/g, '')
     .replace(/javascript:/gi, '')
     .replace(/on\w+\s*=/gi, '')
-    .substring(0, 5000); // Hard cap
+    .substring(0, 5000);
 };
 
 async function startServer() {
   const app = express();
 
-  // ─── Security middleware ────────────────────────────────────────────────────
+  // ─── Security & CORS middleware ─────────────────────────────────────────────
 
-  // Helmet sets a wide range of security-relevant HTTP headers
+  const allowedOrigins = process.env.NODE_ENV === "production"
+    ? [
+        process.env.PUBLIC_URL || '',
+        'https://collabcanvas-app.web.app',
+        'https://collabcanvas-app.firebaseapp.com'
+      ].filter(Boolean)
+    : ['http://localhost:3001', 'http://127.0.0.1:3001'];
+
+  // standard cors middleware for robust header/preflight handling
+  app.use(cors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps or curl)
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV !== 'production') {
+        callback(null, true);
+      } else {
+        callback(new Error('By CORS Policy: Origin not allowed'));
+      }
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+  }));
+
   app.use(
     helmet({
       contentSecurityPolicy: {
@@ -52,44 +75,27 @@ async function startServer() {
             "https://securetoken.googleapis.com",
             "https://firestore.googleapis.com",
             "https://www.googleapis.com",
+            ...allowedOrigins // Allow connecting to frontend if needed
           ],
           frameSrc: ["'none'"],
           objectSrc: ["'none'"],
         },
       },
+      crossOriginResourcePolicy: { policy: "cross-origin" },
       hsts: {
-        maxAge: 63072000, // 2 years
+        maxAge: 63072000,
         includeSubDomains: true,
         preload: true,
       },
     })
   );
 
-  // Security: Max payload 10mb prevents memory crash on image uploads
   app.use(express.json({ limit: "10mb" }));
-
-  // CORS configuration
-  const allowedOrigins = process.env.NODE_ENV === "production"
-    ? [process.env.PUBLIC_URL || ''].filter(Boolean)
-    : ['http://localhost:3001', 'http://127.0.0.1:3001'];
-
-  app.use((req, res, next) => {
-    const origin = req.headers.origin;
-    if (process.env.NODE_ENV !== "production") {
-      res.setHeader('Access-Control-Allow-Origin', origin || '*');
-    } else if (origin && allowedOrigins.includes(origin)) {
-      res.setHeader('Access-Control-Allow-Origin', origin);
-    }
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    if (req.method === 'OPTIONS') return res.sendStatus(204);
-    next();
-  });
 
   // ─── Rate limiting ──────────────────────────────────────────────────────────
 
   const apiLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 mins
+    windowMs: 15 * 60 * 1000,
     limit: 50,
     message: { error: "Too many requests, please try again later." },
     standardHeaders: true,
@@ -209,6 +215,15 @@ async function startServer() {
 
     } catch (e: any) {
       console.error('[API /generate]', e.message);
+      
+      // Handle known API errors gracefully
+      if (e.message?.includes('RESOURCE_EXHAUSTED')) {
+        return res.status(429).json({ 
+          error: "AI Quota Exceeded. The free-tier rate limit has been hit. Please try again in 1-2 minutes.",
+          code: 'QUOTA_EXCEEDED'
+        });
+      }
+
       res.status(500).json({ error: e.message || "Failed to generate design" });
     }
   });
@@ -255,6 +270,14 @@ async function startServer() {
 
     } catch (e: any) {
       console.error('[API /generate-code]', e.message);
+
+      if (e.message?.includes('RESOURCE_EXHAUSTED')) {
+        return res.status(429).json({ 
+          error: "AI Quota Exceeded. Please try again in 1-2 minutes.",
+          code: 'QUOTA_EXCEEDED'
+        });
+      }
+
       res.status(500).json({ error: e.message || "Failed to generate code" });
     }
   });
@@ -274,10 +297,25 @@ async function startServer() {
   const httpServer = createServer(app);
   const io = new Server(httpServer, {
     cors: {
-      origin: process.env.NODE_ENV === "production" ? allowedOrigins : "*",
+      origin: (origin, callback) => {
+        // In production, validate against Firebase domains
+        const isAllowed = !origin || 
+          origin === 'https://collabcanvas-app.web.app' || 
+          origin === 'https://collabcanvas-app.firebaseapp.com' ||
+          origin.endsWith('-collabcanvas-app.web.app') ||
+          process.env.NODE_ENV !== 'production';
+        
+        if (isAllowed) {
+          callback(null, true);
+        } else {
+          console.warn('[Socket CORS] Rejected origin:', origin);
+          callback(new Error('Origin not allowed by Socket CORS'));
+        }
+      },
       methods: ["GET", "POST"],
+      credentials: true
     },
-    maxHttpBufferSize: 1e7, // 10MB
+    maxHttpBufferSize: 1e7,
   });
 
   const PORT = parseInt(process.env.PORT || '3001');

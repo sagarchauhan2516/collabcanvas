@@ -178,7 +178,10 @@ export default function App() {
     try {
       await signInWithGoogle();
     } catch (e: any) {
-      setAuthError(e.message || 'Sign-in failed. Please try again.');
+      const msg = e.code === 'auth/configuration-not-found' || e.code === 'auth/internal-error'
+        ? 'Google Sign-In is not available yet. Please use "Continue as Guest" to get started!'
+        : (e.message || 'Sign-in failed. Please try again.');
+      setAuthError(msg);
     }
   }, []);
 
@@ -187,7 +190,12 @@ export default function App() {
     try {
       await signInAsGuest();
     } catch (e: any) {
-      setAuthError(e.message || 'Guest sign-in failed. Please try again.');
+      // Graceful fallback: if Firebase Auth is not configured/enabled,
+      // still allow the user to join locally without Firebase auth.
+      console.warn('[CollabCanvas] Firebase Anonymous Auth failed, falling back to local session:', e.message);
+      setName('Guest');
+      setIsJoined(true);
+      setAuthLoading(false);
     }
   }, []);
 
@@ -816,7 +824,8 @@ export default function App() {
         style: { fill: el.fill, stroke: el.stroke }
       }));
 
-      const response = await fetch('/api/generate-code', {
+      const apiBase = (typeof __API_BASE_URL__ !== 'undefined' && __API_BASE_URL__) ? __API_BASE_URL__ : '';
+      const response = await fetch(`${apiBase}/api/generate-code`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ elements: parts })
@@ -824,6 +833,9 @@ export default function App() {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        if (response.status === 429 || errorData.code === 'QUOTA_EXCEEDED') {
+          throw new Error('AI Quota Exceeded. Gemini free-tier limit hit. Please try again in 1-2 minutes.');
+        }
         throw new Error(errorData.error || response.statusText);
       }
 
@@ -842,7 +854,8 @@ export default function App() {
     setIsGenerating(true);
     setLoadingMessage(aiImage ? 'Analyzing image and crafting elements...' : (mode === 'refine' ? 'Refining your design...' : 'Dreaming up your design...'));
     try {
-      const response = await fetch('/api/generate', {
+      const apiBase = (typeof __API_BASE_URL__ !== 'undefined' && __API_BASE_URL__) ? __API_BASE_URL__ : '';
+      const response = await fetch(`${apiBase}/api/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

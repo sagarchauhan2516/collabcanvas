@@ -15,10 +15,19 @@ export function useSocket(
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   useEffect(() => {
-    const newSocket = io({
+    // In production (Firebase Hosting), connect to the Cloud Run backend.
+    // __API_BASE_URL__ is injected at build time by vite.config.ts.
+    const backendUrl = (typeof __API_BASE_URL__ !== 'undefined' && __API_BASE_URL__)
+      ? __API_BASE_URL__
+      : window.location.origin;
+
+    const newSocket = io(backendUrl, {
       transports: ['polling', 'websocket'],
-      reconnectionAttempts: 5,
-      timeout: 10000
+      reconnectionAttempts: 10,
+      timeout: 20000,
+      path: '/socket.io',
+      withCredentials: true,
+      autoConnect: true,
     });
 
     setSocket(newSocket);
