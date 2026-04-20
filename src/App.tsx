@@ -2120,7 +2120,6 @@ export default function App() {
               )}
 
               {activeTab === 'layers' && (
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col gap-2 px-1">
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col gap-1.5">
                   <div className="flex items-center justify-between px-1 mb-2">
                     <span className="text-[9px] uppercase font-black tracking-widest text-white/20">LAYERS</span>
@@ -2752,8 +2751,8 @@ export default function App() {
                             <button onClick={() => alignElements('center')} title="Align Center" className="p-1 hover:bg-white/10 rounded text-white/40 hover:text-white transition-all"><AlignCenter size={12} /></button>
                             <button onClick={() => alignElements('right')} title="Align Right" className="p-1 hover:bg-white/10 rounded text-white/40 hover:text-white transition-all"><AlignRight size={12} /></button>
                             <div className="w-[1px] bg-white/5 mx-0.5" />
-                            <button onClick={() => alignElements('h-distribute')} title="Distribute Horizontally" className="p-1 hover:bg-white/10 rounded text-white/40 hover:text-white transition-all"><AlignHorizontalJustifyCenter size={12} /></button>
-                            <button onClick={() => alignElements('v-distribute')} title="Distribute Vertically" className="p-1 hover:bg-white/10 rounded text-white/40 hover:text-white transition-all"><AlignVerticalJustifyCenter size={12} /></button>
+                            <button onClick={() => distributeElements('horizontal')} title="Distribute Horizontally" className="p-1 hover:bg-white/10 rounded text-white/40 hover:text-white transition-all"><AlignJustify size={12} className="rotate-90" /></button>
+                            <button onClick={() => distributeElements('vertical')} title="Distribute Vertically" className="p-1 hover:bg-white/10 rounded text-white/40 hover:text-white transition-all"><AlignJustify size={12} /></button>
                             <div className="w-[1px] bg-white/5 mx-0.5" />
                             {selectedIds.length > 1 && (
                               <>
