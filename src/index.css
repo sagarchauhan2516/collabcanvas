@@ -1,0 +1,111 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+:root {
+  --glass-bg: rgba(255, 255, 255, 0.12);
+  --glass-border: rgba(255, 255, 255, 0.22);
+  --text-main: #ffffff;
+  --text-dim: rgba(255, 255, 255, 0.6);
+  --accent: #bb86fc;
+  --bg-gradient: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+}
+
+body {
+  background: var(--bg-gradient);
+  background-attachment: fixed;
+  color: var(--text-main);
+  overflow: hidden;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Background Blobs */
+.background-blobs {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.4;
+}
+
+.blob-1 { width: 400px; height: 400px; background: #6a11cb; top: -100px; left: -100px; }
+.blob-2 { width: 500px; height: 500px; background: #2575fc; bottom: -150px; right: -100px; }
+.blob-3 { width: 300px; height: 300px; background: #ff0080; top: 20%; right: 10%; }
+
+/* Glassmorphism Components */
+.panel {
+  background: var(--glass-bg);
+  backdrop-filter: blur(25px);
+  -webkit-backdrop-filter: blur(25px);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+}
+
+/* Technical Grid Background (Themed) */
+.canvas-bg {
+  background-image: 
+    linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+.tool-btn {
+  @apply p-2 rounded-xl transition-all duration-200 flex items-center justify-center border;
+}
+
+.tool-btn-active {
+  background: rgba(255, 255, 255, 0.15);
+  color: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 15px rgba(187, 134, 252, 0.3);
+}
+
+.tool-btn-inactive {
+  background: transparent;
+  color: var(--text-dim);
+  border-color: transparent;
+  @apply hover:bg-white/5 hover:text-white;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #000;
+  @apply font-bold py-3 px-6 rounded-xl transition-all hover:opacity-90 active:scale-95;
+}
+
+.input-glass {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--glass-border);
+  color: white;
+  @apply p-3 rounded-xl outline-none focus:border-white/40 transition-all;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
