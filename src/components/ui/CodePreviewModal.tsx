@@ -64,8 +64,8 @@ export function CodePreviewModal({
                     {copied ? 'Copied!' : 'Copy Code'}
                   </button>
                 )}
-                <button onClick={onClose} className="p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/5 transition-colors">
-                  <X size={20} />
+                <button onClick={onClose} className="p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/5 transition-colors" aria-label="Close modal">
+                  <X size={20} aria-hidden="true" />
                 </button>
               </div>
             </div>

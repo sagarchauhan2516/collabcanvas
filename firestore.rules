@@ -1,0 +1,29 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─── User Projects ────────────────────────────────────────────────────────
+    // Each user can only read and write their own projects.
+    // Projects are stored under: users/{userId}/projects/{projectId}
+    match /users/{userId}/projects/{projectId} {
+      // Only the authenticated user who owns the data can read or write
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+
+      // Validate project document structure on writes
+      allow create, update: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.data.keys().hasAll(['id', 'name', 'elements', 'userId'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() <= 200
+        && request.resource.data.elements is list
+        && request.resource.data.elements.size() <= 5000
+        && request.resource.data.userId == userId;
+    }
+
+    // ─── Deny all other paths ────────────────────────────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

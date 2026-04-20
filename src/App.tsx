@@ -1,13 +1,18 @@
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
+ *
+ * CollabCanvas – Real-time collaborative whiteboard with Gemini AI generation.
+ * Solves the problem of remote team design collaboration by providing a shared
+ * infinite canvas with live cursors, AI-powered layout generation, and
+ * cloud-synced project saving via Firebase.
  */
 
 import { useEffect, useState, useRef, memo, useMemo, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { nanoid } from 'nanoid';
 import { Stage, Layer, Rect, Circle, Line, Text, Group, Transformer, Path, Image as KonvaImage } from 'react-konva';
-import { MousePointer2, Square, Circle as CircleIcon, Minus, Type, Trash2, Download, Users, Eraser, Sparkles, X, Loader2, Undo2, Redo2, ZoomIn, ZoomOut, Maximize, Layers, Ungroup, Database, Diamond, AlignLeft, AlignCenter, AlignRight, AlignVerticalJustifyStart, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Cloud, User as UserIcon, FileText, Activity, StickyNote, ArrowRight, Star, Hexagon, Triangle, Copy, Files, Grid3X3, Ruler as RulerIcon, Palette, Lock, Unlock, Hand, Layout, Image as ImageIcon, RefreshCw, Plus, Scissors, Clipboard, Search, Bold, Italic, Underline, Code, PenLine, Crop, Monitor, Save, FolderOpen, Eye, EyeOff, SlidersHorizontal, AlignJustify, Settings, Pipette } from 'lucide-react';
+import { MousePointer2, Square, Circle as CircleIcon, Minus, Type, Trash2, Download, Users, Eraser, Sparkles, X, Loader2, Undo2, Redo2, ZoomIn, ZoomOut, Maximize, Layers, Ungroup, Database, Diamond, AlignLeft, AlignCenter, AlignRight, AlignVerticalJustifyStart, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Cloud, User as UserIcon, FileText, Activity, StickyNote, ArrowRight, Star, Hexagon, Triangle, Copy, Files, Grid3X3, Ruler as RulerIcon, Palette, Lock, Unlock, Hand, Layout, Image as ImageIcon, RefreshCw, Plus, Scissors, Clipboard, Search, Bold, Italic, Underline, Code, PenLine, Crop, Monitor, Save, FolderOpen, Eye, EyeOff, SlidersHorizontal, AlignJustify, Settings, Pipette, LogOut } from 'lucide-react';
 import { CanvasElement, User, ElementType, Guide } from './types';
 import { PRESET_TEMPLATES, Template } from './templates';
 import { motion, AnimatePresence, useDragControls } from 'motion/react';
@@ -16,6 +21,19 @@ import { CanvasShape } from './components/canvas/CanvasShape';
 import { GridLayer, CanvasRuler, GuideLine } from './components/canvas/CanvasExtras';
 import { ToolButton, ContextMenuItem } from './components/ui/ToolbarComponents';
 import { CodePreviewModal } from './components/ui/CodePreviewModal';
+import {
+  auth,
+  signInWithGoogle,
+  signInAsGuest,
+  signOutUser,
+  onAuthStateChanged,
+  type FirebaseUser,
+  trackEvent,
+  ANALYTICS_EVENTS,
+  saveProjectToCloud,
+  loadProjectsFromCloud,
+  deleteProjectFromCloud,
+} from './firebase';
 
 const COLORS = ['#212529', '#f03e3e', '#1971c2', '#099268', '#f08c00', '#be4bdb'];
 const STROKE_WIDTHS = [2, 4, 8, 12];
@@ -28,7 +46,12 @@ export default function App() {
   const [users, setUsers] = useState<User[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [name, setName] = useState('');
-  const [isJoined, setIsJoined] = useState(true);
+  const [isJoined, setIsJoined] = useState(false);
+
+  // Firebase Auth state
+  const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authError, setAuthError] = useState<string | null>(null);
   
   // Canvas View State
   const [view, setView] = useState({ scale: 1, x: 0, y: 0 });
@@ -129,6 +152,52 @@ export default function App() {
   const toolbarControls = useDragControls();
   const colorControls = useDragControls();
   const propsControls = useDragControls();
+
+  // ─── Firebase Auth State Observer ────────────────────────────────────────
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setFirebaseUser(user);
+      setAuthLoading(false);
+      if (user) {
+        // Auto-join with Firebase display name or anonymous label
+        const displayName = user.displayName || (user.isAnonymous ? 'Guest' : 'User');
+        setName(displayName);
+        setIsJoined(true);
+        trackEvent(ANALYTICS_EVENTS.USER_SIGNED_IN, {
+          method: user.isAnonymous ? 'anonymous' : 'google',
+        });
+      } else {
+        setIsJoined(false);
+      }
+    });
+    return unsubscribe;
+  }, []);
+
+  const handleGoogleSignIn = useCallback(async () => {
+    setAuthError(null);
+    try {
+      await signInWithGoogle();
+    } catch (e: any) {
+      setAuthError(e.message || 'Sign-in failed. Please try again.');
+    }
+  }, []);
+
+  const handleGuestSignIn = useCallback(async () => {
+    setAuthError(null);
+    try {
+      await signInAsGuest();
+    } catch (e: any) {
+      setAuthError(e.message || 'Guest sign-in failed. Please try again.');
+    }
+  }, []);
+
+  const handleSignOut = useCallback(async () => {
+    await signOutUser();
+    setCurrentUser(null);
+    setElements([]);
+    setHistory([]);
+    setHistoryStep(-1);
+  }, []);
 
   useEffect(() => {
     let timeoutId: any;
@@ -696,6 +765,7 @@ export default function App() {
       addToHistory(next);
       return next;
     });
+    trackEvent(ANALYTICS_EVENTS.ELEMENT_ADDED, { element_type: finalizingElement.type });
     setNewElement(null);
     // Keep tool active for pencil (allows continuous strokes)
     if (tool !== 'pencil') setTool('select');
@@ -732,6 +802,7 @@ export default function App() {
     setShowCodeModal(true);
     setIsGeneratingCode(true);
     setGeneratedCode('');
+    trackEvent(ANALYTICS_EVENTS.CODE_GENERATED, { element_count: targetElements.length });
     
     try {
       const parts = targetElements.map(el => ({
@@ -942,35 +1013,26 @@ export default function App() {
   }, [tool]);
 
   const handleTransform = useCallback(() => {
+    // During a transform drag, Konva handles the visual scaling natively.
+    // We intentionally do NOT write scaleX/scaleY into React state here —
+    // that would cause handleTransformEnd to read stale base dimensions.
+    // Only sync position/rotation for live collab cursor updates.
     const nodes = trRef.current?.nodes() || [];
     if (nodes.length === 0) return;
-    
-    setElements(prev => {
-      const next = [...prev];
-      let hasChanges = false;
-      
-      nodes.forEach((n: any) => {
-        const elIdx = next.findIndex(item => item.id === n.id());
-        if (elIdx === -1) return;
 
-        const el = next[elIdx];
-        const updated = {
-          ...el,
-          x: n.x(),
-          y: n.y(),
-          scaleX: n.scaleX(),
-          scaleY: n.scaleY(),
-          rotation: n.rotation()
-        };
-        
-        next[elIdx] = updated;
-        socket?.emit('element:update', updated);
-        hasChanges = true;
+    nodes.forEach((n: any) => {
+      const el = elements.find(item => item.id === n.id());
+      if (!el) return;
+      // Broadcast live position to collaborators but do NOT call setElements;
+      // Konva's own node update handles the visual until transformEnd fires.
+      socket?.emit('element:update', {
+        ...el,
+        x: n.x(),
+        y: n.y(),
+        rotation: n.rotation(),
       });
-
-      return hasChanges ? next : prev;
     });
-  }, [socket]);
+  }, [socket, elements]);
 
   const handleTransformEnd = useCallback(() => {
     const nodes = trRef.current?.nodes() || [];
@@ -987,34 +1049,66 @@ export default function App() {
         if (elIdx === -1) return;
 
         const el = next[elIdx];
-        
-        let nx = n.x();
-        let ny = n.y();
+
+        const nx = n.x();
+        const ny = n.y();
         const scaleX = n.scaleX();
         const scaleY = n.scaleY();
         const rotation = n.rotation();
 
-        // Bake the scale strictly into width/height or points
-        const updated = { ...el, x: nx, y: ny, rotation, scaleX: 1, scaleY: 1 };
-        
-        updated.width = Math.max(5, (el.width || 100) * Math.abs(scaleX));
-        updated.height = Math.max(5, (el.height || 100) * Math.abs(scaleY));
+        // Use the element's CURRENT stored dimensions (which may already have been
+        // partially updated by handleTransform during the drag). But scaleX/scaleY
+        // on the node represent ADDITIONAL scale beyond what's baked in width/height.
+        // The safe approach: read the "base" dimensions from the element in prev state
+        // but use the node's absolute attrs to reconstruct final size.
+        const nodeWidth = n.width?.() ?? 0;
+        const nodeHeight = n.height?.() ?? 0;
+        const nodeRadius = n.radius?.() ?? 0;
+
+        // Reset node scale to 1 immediately so Konva and React stay in sync
+        n.scaleX(1);
+        n.scaleY(1);
+
+        const updated: CanvasElement = {
+          ...el,
+          x: nx,
+          y: ny,
+          rotation,
+          scaleX: 1,
+          scaleY: 1,
+        };
 
         if (el.type === 'line' || el.type === 'arrow') {
+          // For lines, scale the points array
           if (el.points) {
             updated.points = el.points.map((p, i) => (i % 2 === 0 ? p * scaleX : p * scaleY));
           }
+          updated.width = Math.max(5, (el.width || 1) * Math.abs(scaleX));
+          updated.height = Math.max(5, (el.height || 1) * Math.abs(scaleY));
         } else if (el.type === 'circle') {
-          updated.radius = Math.max(5, (el.radius || 50) * Math.abs(scaleX));
+          // Konva circle: the node's radius * scale gives new radius
+          updated.radius = Math.max(5, nodeRadius * Math.abs(scaleX));
+          updated.width = updated.radius * 2;
+          updated.height = updated.radius * 2;
+        } else if (el.type === 'pencil') {
+          // Scale all pencil points
+          if (el.pencilPoints) {
+            updated.pencilPoints = el.pencilPoints.map((p, i) => (i % 2 === 0 ? p * scaleX : p * scaleY));
+          }
+          updated.width = Math.max(20, (el.width || 20) * Math.abs(scaleX));
+          updated.height = Math.max(20, (el.height || 20) * Math.abs(scaleY));
+        } else {
+          // Rect, diamond, frame, etc. — bake scale into width/height
+          // nodeWidth * scaleX gives us the FINAL pixel width from Konva's perspective
+          updated.width = Math.max(5, nodeWidth * Math.abs(scaleX));
+          updated.height = Math.max(5, nodeHeight * Math.abs(scaleY));
         }
-
-        // Hard reset the visual node scale to 1 so the visual and data stay matched perfectly
-        n.scaleX(1);
-        n.scaleY(1);
 
         if (snapToGrid) {
           updated.x = Math.round(nx / gridSize) * gridSize;
           updated.y = Math.round(ny / gridSize) * gridSize;
+          updated.width = updated.width ? Math.round(updated.width / gridSize) * gridSize : updated.width;
+          updated.height = updated.height ? Math.round(updated.height / gridSize) * gridSize : updated.height;
         }
 
         next[elIdx] = updated;
@@ -1024,12 +1118,12 @@ export default function App() {
       });
 
       if (!hasChanges) return prev;
-      
+
       const finalState = updateBoundElements(movedElements, next);
       addToHistory(finalState);
       return finalState;
     });
-    
+
     setSnapLine(null);
   }, [socket, snapToGrid, gridSize, addToHistory, updateBoundElements]);
 
@@ -1295,16 +1389,25 @@ export default function App() {
     });
   }, []);
 
-  const saveProject = useCallback((projectName?: string) => {
-    const name = projectName || canvasName || `Project ${new Date().toLocaleDateString()}`;
-    const project = { id: nanoid(), name, elements, savedAt: Date.now() };
+  const saveProject = useCallback(async (projectName?: string) => {
+    const pName = projectName || canvasName || `Project ${new Date().toLocaleDateString()}`;
+    const project = { id: nanoid(), name: pName, elements, savedAt: Date.now() };
     setSavedProjects(prev => {
-      const next = [project, ...prev].slice(0, 20); // Keep last 20
+      const next = [project, ...prev].slice(0, 20);
       localStorage.setItem('collab-saved-projects', JSON.stringify(next));
       return next;
     });
+    // Also persist to Firestore if authenticated (non-anonymous)
+    if (firebaseUser && !firebaseUser.isAnonymous) {
+      try {
+        await saveProjectToCloud(firebaseUser.uid, project);
+        trackEvent(ANALYTICS_EVENTS.PROJECT_SAVED, { project_name: pName });
+      } catch (e) {
+        console.warn('[CollabCanvas] Cloud save failed, local save succeeded:', e);
+      }
+    }
     return project;
-  }, [canvasName, elements]);
+  }, [canvasName, elements, firebaseUser]);
 
   const loadProject = useCallback((project: { id: string; name: string; elements: CanvasElement[]; savedAt: number }) => {
     if (confirm(`Load "${project.name}"? This will replace the current canvas.`)) {
@@ -1676,35 +1779,113 @@ export default function App() {
     URL.revokeObjectURL(url);
   }, [elements]);
 
+  // ─── Auth / Landing Screen ────────────────────────────────────────────────
+  if (authLoading) {
+    return (
+      <div
+        role="status"
+        aria-label="Loading CollabCanvas"
+        aria-live="polite"
+        className="h-screen w-screen flex items-center justify-center bg-[#0a0a0a]"
+      >
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-purple-500/20 border-t-purple-500 rounded-full animate-spin" />
+          <span className="text-white/40 text-sm font-medium">Loading CollabCanvas…</span>
+        </div>
+      </div>
+    );
+  }
+
   if (!isJoined) {
     return (
-      <div className="h-screen w-screen flex items-center justify-center relative overflow-hidden">
-        <div className="background-blobs">
-          <div className="blob blob-1"></div>
-          <div className="blob blob-2"></div>
-          <div className="blob blob-3"></div>
+      <div className="h-screen w-screen flex items-center justify-center relative overflow-hidden" role="main" id="main-content">
+        <div className="background-blobs" aria-hidden="true">
+          <div className="blob blob-1" />
+          <div className="blob blob-2" />
+          <div className="blob blob-3" />
         </div>
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="panel p-8 rounded-[32px] w-full max-w-md relative z-10"
+
+        <motion.div
+          initial={{ opacity: 0, y: 24, scale: 0.97 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ type: 'spring', damping: 24, stiffness: 280 }}
+          className="auth-card relative z-10"
         >
-          <h1 className="text-4xl font-extrabold mb-6 text-white tracking-tight">CollabCanvas</h1>
-          <p className="text-white/60 mb-8">Enter your name to start collaborating in real-time.</p>
-          <input
-            type="text"
-            placeholder="Your Name"
-            className="input-glass w-full mb-4"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
-          />
-          <button
-            onClick={handleJoin}
-            className="btn-primary w-full shadow-xl shadow-purple-500/20"
-          >
-            Join Workspace
-          </button>
+          {/* Branding */}
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-10 h-10 bg-gradient-to-br from-purple-600 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-purple-500/30">
+              <Sparkles className="text-white" size={20} aria-hidden="true" />
+            </div>
+            <div>
+              <h1 className="text-xl font-extrabold text-white tracking-tight">CollabCanvas</h1>
+              <p className="text-[10px] text-white/40 uppercase tracking-widest">AI Collaborative Whiteboard</p>
+            </div>
+          </div>
+
+          <h2 className="text-2xl font-bold text-white mb-2">Start Collaborating</h2>
+          <p className="text-white/50 text-sm mb-8 leading-relaxed">
+            Design together in real-time. Draw, diagram, and create — enhanced by Gemini AI that generates professional layouts from natural language.
+          </p>
+
+          {/* Sign-in options */}
+          <div className="flex flex-col gap-3">
+            <button
+              id="btn-google-signin"
+              onClick={handleGoogleSignIn}
+              className="auth-btn-google"
+              aria-label="Sign in with Google"
+            >
+              {/* Google logo SVG */}
+              <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true" focusable="false">
+                <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
+                <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z" fill="#34A853"/>
+                <path d="M3.964 10.71A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 000 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
+                <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.958L3.964 6.29C4.672 4.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
+              </svg>
+              Continue with Google
+            </button>
+
+            <div className="relative flex items-center gap-3" role="separator" aria-label="or">
+              <div className="flex-1 h-[1px] bg-white/10" aria-hidden="true" />
+              <span className="text-white/20 text-xs">or</span>
+              <div className="flex-1 h-[1px] bg-white/10" aria-hidden="true" />
+            </div>
+
+            <button
+              id="btn-guest-signin"
+              onClick={handleGuestSignIn}
+              className="auth-btn-guest"
+              aria-label="Continue as guest without signing in"
+            >
+              <UserIcon size={16} aria-hidden="true" />
+              Continue as Guest
+            </button>
+          </div>
+
+          {/* Error message */}
+          {authError && (
+            <p role="alert" aria-live="assertive" className="mt-4 text-red-400 text-xs text-center bg-red-500/10 border border-red-500/20 rounded-lg p-3">
+              {authError}
+            </p>
+          )}
+
+          {/* Feature highlights */}
+          <div className="mt-8 grid grid-cols-3 gap-3">
+            {[
+              { icon: '🎨', label: 'Real-time Drawing' },
+              { icon: '🤖', label: 'AI Generation' },
+              { icon: '☁️', label: 'Cloud Sync' },
+            ].map(f => (
+              <div key={f.label} className="flex flex-col items-center gap-1.5 p-2 rounded-xl bg-white/5 border border-white/5">
+                <span className="text-lg" aria-hidden="true">{f.icon}</span>
+                <span className="text-[9px] text-white/40 font-medium text-center">{f.label}</span>
+              </div>
+            ))}
+          </div>
+
+          <p className="mt-6 text-center text-[10px] text-white/20">
+            Powered by Gemini AI · Firebase · Socket.io
+          </p>
         </motion.div>
       </div>
     );
@@ -1712,13 +1893,19 @@ export default function App() {
 
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden relative">
-      <div className="background-blobs">
+      <div className="background-blobs" aria-hidden="true">
         <div className="blob blob-1"></div>
         <div className="blob blob-2"></div>
         <div className="blob blob-3"></div>
       </div>
 
-      <header className="h-12 border-b border-white/5 bg-[#0a0a0a] flex items-center justify-between px-3 z-[100] shadow-xl">
+      {/* Accessible loading announcement */}
+      <div aria-live="polite" aria-atomic="true" className="sr-only">
+        {isGenerating && 'AI is generating your design, please wait.'}
+        {isGeneratingCode && 'AI is generating code from your canvas, please wait.'}
+      </div>
+
+      <header className="h-12 border-b border-white/5 bg-[#0a0a0a] flex items-center justify-between px-3 z-[100] shadow-xl" role="banner">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 bg-purple-600 rounded-lg flex items-center justify-center shadow-lg shadow-purple-500/20">
@@ -1839,12 +2026,31 @@ export default function App() {
             >
               <Monitor size={14} />
             </button>
-            <button onClick={() => setShowSettings(true)} className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/50 transition-all" title="Canvas Settings">
-              <Settings size={14} />
+            <button onClick={() => setShowSettings(true)} className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/50 transition-all" title="Canvas Settings" aria-label="Canvas Settings">
+              <Settings size={14} aria-hidden="true" />
             </button>
-            <button onClick={() => setShowHelp(true)} className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/50 transition-all" title="Help">
-              <Activity size={14} />
+            <button onClick={() => setShowHelp(true)} className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/50 transition-all" title="Help & Shortcuts" aria-label="Help and Keyboard Shortcuts">
+              <Activity size={14} aria-hidden="true" />
             </button>
+            {/* User avatar + sign-out */}
+            <div className="flex items-center gap-1.5 ml-1 pl-2 border-l border-white/10">
+              {firebaseUser && !firebaseUser.isAnonymous && firebaseUser.photoURL && (
+                <img
+                  src={firebaseUser.photoURL}
+                  alt={firebaseUser.displayName || 'User avatar'}
+                  className="w-6 h-6 rounded-full border border-white/20"
+                  referrerPolicy="no-referrer"
+                />
+              )}
+              <button
+                onClick={handleSignOut}
+                className="p-1.5 rounded-lg bg-white/5 hover:bg-red-500/20 text-white/40 hover:text-red-400 transition-all"
+                title="Sign Out"
+                aria-label="Sign out of CollabCanvas"
+              >
+                <LogOut size={14} aria-hidden="true" />
+              </button>
+            </div>
           </div>
           
           <AnimatePresence>
@@ -1884,6 +2090,9 @@ export default function App() {
 
       {/* Main Workspace */}
       <main
+        id="main-content"
+        role="main"
+        aria-label="CollabCanvas collaborative drawing workspace"
         className="flex-1 flex overflow-hidden"
         style={{
           backgroundColor: canvasBg === 'light' ? '#f1f5f9' : canvasBg === 'dim' ? '#1a1c2e' : '#0d0d11',

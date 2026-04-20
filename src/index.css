@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-sans: "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 }
 
@@ -14,6 +14,8 @@
   --bg-gradient: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
 }
 
+/* ─── Base Reset ────────────────────────────────────────────────────────────── */
+
 body {
   background: var(--bg-gradient);
   background-attachment: fixed;
@@ -23,7 +25,45 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Background Blobs */
+/* ─── Skip Navigation Link (Accessibility) ─────────────────────────────────── */
+
+.skip-link {
+  position: absolute;
+  top: -100%;
+  left: 1rem;
+  z-index: 10000;
+  background: #6366f1;
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.875rem;
+  padding: 0.75rem 1.25rem;
+  border-radius: 0 0 0.75rem 0.75rem;
+  text-decoration: none;
+  transition: top 0.2s ease;
+}
+
+.skip-link:focus {
+  top: 0;
+  outline: 3px solid #fff;
+  outline-offset: 2px;
+}
+
+/* ─── Focus Visible (Keyboard Accessibility) ────────────────────────────────── */
+
+*:focus-visible {
+  outline: 2px solid #6366f1;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Suppress focus ring for mouse users only on elements that handle it */
+button:focus:not(:focus-visible),
+[role="button"]:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* ─── Background Blobs ──────────────────────────────────────────────────────── */
+
 .background-blobs {
   position: absolute;
   width: 100%;
@@ -44,7 +84,8 @@ body {
 .blob-2 { width: 500px; height: 500px; background: #2575fc; bottom: -150px; right: -100px; }
 .blob-3 { width: 300px; height: 300px; background: #ff0080; top: 20%; right: 10%; }
 
-/* Glassmorphism Components */
+/* ─── Glassmorphism Components ──────────────────────────────────────────────── */
+
 .panel {
   background: var(--glass-bg);
   backdrop-filter: blur(25px);
@@ -53,13 +94,16 @@ body {
   box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
 }
 
-/* Technical Grid Background (Themed) */
+/* ─── Canvas Background ─────────────────────────────────────────────────────── */
+
 .canvas-bg {
   background-image: 
     linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
     linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
   background-size: 20px 20px;
 }
+
+/* ─── Tool Buttons ──────────────────────────────────────────────────────────── */
 
 .tool-btn {
   @apply p-2 rounded-xl transition-all duration-200 flex items-center justify-center border;
@@ -79,11 +123,94 @@ body {
   @apply hover:bg-white/5 hover:text-white;
 }
 
+.tool-btn:focus-visible {
+  outline: 2px solid #6366f1;
+  outline-offset: 2px;
+}
+
+/* ─── Primary Button ────────────────────────────────────────────────────────── */
+
 .btn-primary {
   background: var(--accent);
   color: #000;
   @apply font-bold py-3 px-6 rounded-xl transition-all hover:opacity-90 active:scale-95;
 }
+
+.btn-primary:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 2px;
+}
+
+/* ─── Auth / Landing Screen ─────────────────────────────────────────────────── */
+
+.auth-card {
+  background: rgba(15, 12, 41, 0.85);
+  backdrop-filter: blur(32px);
+  -webkit-backdrop-filter: blur(32px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 1.5rem;
+  box-shadow: 0 25px 80px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(99, 102, 241, 0.15);
+  padding: 2.5rem;
+  max-width: 420px;
+  width: 100%;
+}
+
+.auth-btn-google {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.875rem 1.5rem;
+  background: #fff;
+  color: #111;
+  font-weight: 600;
+  font-size: 0.9rem;
+  border: none;
+  border-radius: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.auth-btn-google:hover {
+  background: #f3f4f6;
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+}
+
+.auth-btn-google:focus-visible {
+  outline: 3px solid #6366f1;
+  outline-offset: 2px;
+}
+
+.auth-btn-guest {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.875rem 1.5rem;
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.8);
+  font-weight: 500;
+  font-size: 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.auth-btn-guest:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.auth-btn-guest:focus-visible {
+  outline: 3px solid #6366f1;
+  outline-offset: 2px;
+}
+
+/* ─── Input Glass ───────────────────────────────────────────────────────────── */
 
 .input-glass {
   background: rgba(255, 255, 255, 0.05);
@@ -91,6 +218,13 @@ body {
   color: white;
   @apply p-3 rounded-xl outline-none focus:border-white/40 transition-all;
 }
+
+.input-glass:focus-visible {
+  outline: 2px solid #6366f1;
+  outline-offset: 1px;
+}
+
+/* ─── Custom Scrollbar ──────────────────────────────────────────────────────── */
 
 .custom-scrollbar::-webkit-scrollbar {
   width: 4px;
@@ -108,4 +242,36 @@ body {
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.2);
+}
+
+/* ─── Reduced Motion ────────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ─── High Contrast Mode ────────────────────────────────────────────────────── */
+
+@media (forced-colors: active) {
+  .panel, .tool-btn, .btn-primary {
+    border: 2px solid ButtonText;
+  }
+}
+
+/* ─── ARIA live region (screen readers) ─────────────────────────────────────── */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
 }
